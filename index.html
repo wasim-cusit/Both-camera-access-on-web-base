@@ -168,7 +168,7 @@
     const toOption = d => {
       const opt = document.createElement('option');
       opt.value = d.deviceId;
-      opt.textContent = d.label || 'Camera';
+      opt.textContent = d.label || 'Camera ' + (d.deviceId.slice(0, 8));
       return opt;
     };
     backSel.innerHTML = '';
@@ -191,47 +191,46 @@
     await stopAll();
 
     const constraintsFor = (deviceId, prefer) => {
-      const base = {audio:false, video:{deviceId: deviceId ? {exact: deviceId} : undefined}};
+      const base = {
+        audio: false,
+        video: {
+          deviceId: deviceId ? { exact: deviceId } : undefined,
+          facingMode: prefer ? { ideal: prefer } : undefined
+        }
+      };
+      
       // Resolution preference
       const res = resSel.value;
       if (res === 'hd')   Object.assign(base.video, {width:{ideal:1280}, height:{ideal:720}});
       if (res === 'fhd')  Object.assign(base.video, {width:{ideal:1920}, height:{ideal:1080}});
       if (res === 'uhd')  Object.assign(base.video, {width:{ideal:3840}, height:{ideal:2160}});
-      // Facing mode preference (as fallback)
-      if (!deviceId && prefer) base.video.facingMode = { ideal: prefer };
+      
       return base;
     };
 
     try {
-      // Try both in sequence (some devices can't do parallel access)
+      // Try to start back camera first
       let back, front;
       
-      // First try to start back camera
       try {
         back = await navigator.mediaDevices.getUserMedia(
           constraintsFor(backSel.value, 'environment')
         );
+        backStream = back;
+        backVideo.srcObject = backStream;
       } catch (e) {
         showError('Back camera failed: ' + e.message);
       }
-      
+
       // Then try to start front camera
       try {
         front = await navigator.mediaDevices.getUserMedia(
           constraintsFor(frontSel.value, 'user')
         );
-      } catch (e) {
-        showError('Front camera failed: ' + e.message);
-      }
-
-      if (back) {
-        backStream = back;
-        backVideo.srcObject = backStream;
-      }
-
-      if (front) {
         frontStream = front;
         frontVideo.srcObject = frontStream;
+      } catch (e) {
+        showError('Front camera failed: ' + e.message);
       }
 
       if (!backStream && !frontStream) {
