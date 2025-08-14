@@ -69,7 +69,7 @@
         <button id="stopBtn" class="btn danger" disabled>Stop</button>
       </div>
       <div id="err" class="err"></div>
-      <div class="note">Tip: drag the small window to any corner, use the handle to resize. “Mirror selfie” flips the front camera horizontally.</div>
+      <div class="note">Tip: drag the small window to any corner, use the handle to resize. "Mirror selfie" flips the front camera horizontally.</div>
       <canvas id="canvas"></canvas>
     </div>
 
@@ -175,7 +175,7 @@
     frontSel.innerHTML = '';
     vids.forEach(d => {
       backSel.appendChild(toOption(d));
-      frontSel.appendChild(toOption(d.clone ? d.clone() : d));
+      frontSel.appendChild(toOption(d));
     });
 
     // Try to auto-pick environment/user by label keywords
@@ -191,41 +191,47 @@
     await stopAll();
 
     const constraintsFor = (deviceId, prefer) => {
-      const base = {audio:false, video:{}};
+      const base = {audio:false, video:{deviceId: deviceId ? {exact: deviceId} : undefined}};
       // Resolution preference
       const res = resSel.value;
       if (res === 'hd')   Object.assign(base.video, {width:{ideal:1280}, height:{ideal:720}});
       if (res === 'fhd')  Object.assign(base.video, {width:{ideal:1920}, height:{ideal:1080}});
       if (res === 'uhd')  Object.assign(base.video, {width:{ideal:3840}, height:{ideal:2160}});
-      // Device preference
-      if (deviceId) base.video.deviceId = { exact: deviceId };
-      else if (prefer) base.video.facingMode = { ideal: prefer }; // fallback
+      // Facing mode preference (as fallback)
+      if (!deviceId && prefer) base.video.facingMode = { ideal: prefer };
       return base;
     };
 
     try {
-      // Try both in parallel
-      const [back, front] = await Promise.allSettled([
-        navigator.mediaDevices.getUserMedia(
+      // Try both in sequence (some devices can't do parallel access)
+      let back, front;
+      
+      // First try to start back camera
+      try {
+        back = await navigator.mediaDevices.getUserMedia(
           constraintsFor(backSel.value, 'environment')
-        ),
-        navigator.mediaDevices.getUserMedia(
+        );
+      } catch (e) {
+        showError('Back camera failed: ' + e.message);
+      }
+      
+      // Then try to start front camera
+      try {
+        front = await navigator.mediaDevices.getUserMedia(
           constraintsFor(frontSel.value, 'user')
-        ),
-      ]);
-
-      if (back.status === 'fulfilled') {
-        backStream = back.value;
-        backVideo.srcObject = backStream;
-      } else {
-        showError('Back camera failed: ' + back.reason?.message);
+        );
+      } catch (e) {
+        showError('Front camera failed: ' + e.message);
       }
 
-      if (front.status === 'fulfilled') {
-        frontStream = front.value;
+      if (back) {
+        backStream = back;
+        backVideo.srcObject = backStream;
+      }
+
+      if (front) {
+        frontStream = front;
         frontVideo.srcObject = frontStream;
-      } else {
-        showError('Front camera failed: ' + front.reason?.message);
       }
 
       if (!backStream && !frontStream) {
